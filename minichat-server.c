@@ -10,8 +10,7 @@ struct client { 					/* descripteur de participant */
 
 static struct client clients[MAXPARTICIPANTS];
 
-static char buf[TAILLE_MSG]; 	/* tampon de messages reçus/à rediffuser */
-static int nbactifs = 0;
+static char buf[TAILLE_MSG];
 
 void effacer(int i) { /* efface le descripteur pour le participant i */
     clients[i].actif = false;
@@ -20,11 +19,12 @@ void effacer(int i) { /* efface le descripteur pour le participant i */
     clients[i].out = -1;
 }
 
-void diffuser(char *dep, int origin) {
-}
-
-void desactiver (int p) {
-/* traitement d'un participant déconnecté (à faire) */
+void diffuser(int origin) {
+    for (int i=0; i < MAXPARTICIPANTS; i++) {
+        if (clients[i].actif && i != origin) {
+            write(clients[i].out, buf, (TAILLE_MSG-1)*sizeof(char));
+        }
+    }
 }
 
 int main (int argc, char *argv[]) {
@@ -32,26 +32,33 @@ int main (int argc, char *argv[]) {
         effacer(i);
     }
 		
-    mkfifo("./ecoute", S_IRUSR|S_IWUSR);
-    int listener=open("./ecoute", O_RDONLY);
+    // suppression du précédent pipe, s'il existe encore
+    unlink("ecoute");
+    int res = mkfifo("ecoute", S_IRUSR|S_IWUSR);
+    if (res == -1) {
+        perror("Couldn't open the pipe");
+        exit(1);
+    }
+    int listener = open("ecoute", O_RDONLY | O_NONBLOCK);
     // descripteur de fichier nécessaire pour empécher le serveur de se fermer en l'absence de clients
-    open("./ecoute", O_WRONLY);
+    open("ecoute", O_WRONLY);
 
     while (true) {
         // création de la liste des descripteurs à vérifier
         fd_set polled_fds;
         FD_ZERO(&polled_fds);
         FD_SET(listener, &polled_fds);
-        int fd_count = 1;
+        int max_fd = listener;
         for (int i=0; i < MAXPARTICIPANTS; i++) {
             if (clients[i].actif) {
                 FD_SET(clients[i].in, &polled_fds);
-                fd_count++;
+                if (clients[i].in > max_fd)
+                    max_fd = clients[i].in;
             }
         }
 
         // on attends
-        int modif = select(fd_count, &polled_fds, NULL, NULL, NULL);
+        int modif = select(max_fd+1, &polled_fds, NULL, NULL, NULL);
         if (modif == -1) {
             // prise en charge des signaux
             if (errno == EINTR)
@@ -62,12 +69,18 @@ int main (int argc, char *argv[]) {
         
         for (int i=0; i < MAXPARTICIPANTS; i++) {
             if (clients[i].actif && FD_ISSET(clients[i].in, &polled_fds)) {
-                buf[read(clients[i].in, buf, (TAILLE_MSG-1)*sizeof(char))] = 0;
-
-
-
+                int nb_read = read(clients[i].in, buf, (TAILLE_MSG-1)*sizeof(char));
+                if (nb_read <= 0) {
+                    // on déconnecte ce client
+                    printf("L'utilisateur %s s'est déconnecté\n", clients[i].nom);
+                    effacer(i);
+                    continue;
+                }
+                buf[nb_read] = 0;
+                diffuser(i);
             }
         }
+
         // Oh, un nouveau client !
         if (FD_ISSET(listener, &polled_fds)) {
             for (int i=0; i < MAXPARTICIPANTS; i++) {
@@ -77,29 +90,16 @@ int main (int argc, char *argv[]) {
                     read(listener, &id, sizeof(int));
                     char names_s2c[TAILLE_NOM];
                     char names_c2s[TAILLE_NOM];
-                    gen_socket(names_s2c, "s2c", id);
-                    gen_socket(names_c2s, "c2s", id);
-                    clients[i].in = open(names_c2s, O_RDONLY);
+                    gen_socket_name(names_s2c, "s2c", id);
+                    gen_socket_name(names_c2s, "c2s", id);
                     clients[i].out = open(names_s2c, O_WRONLY);
+                    clients[i].in = open(names_c2s, O_RDONLY);
                     clients[i].nom[read(clients[i].in, clients[i].nom, TAILLE_NOM*sizeof(char))] = 0;
+                    printf("Nouveau client connecté: %s\n", clients[i].nom);
                     break;
                 }
             }
 
         }
-        printf("participants actifs : %d\n",nbactifs);
-
-		/* boucle du serveur : traiter les requêtes en attente 
-				 * sur le tube d'écoute : lorsqu'il y a moins de MAXPARTICIPANTS actifs.
-				 	ajouter de nouveaux participants et les tubes d'entrée.			  
-				 * sur les tubes de service : lire les messages sur les tubes c2s, et les diffuser.
-				   Note : tous les messages comportent TAILLE_MSG caractères, et les constantes
-           sont fixées pour qu'il n'y ait pas de message tronqué, ce qui serait  pénible 
-           à gérer. Enfin, on ne traite pas plus de TAILLE_RECEPTION/TAILLE_MSG*sizeof(char)
-           à chaque fois.
-           - dans le cas où la terminaison d'un participant est détectée, gérer sa déconnexion
-			
-			(à faire)
-		*/
     }
 }

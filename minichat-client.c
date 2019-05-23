@@ -44,9 +44,9 @@ int main (int argc, char *argv[]) {
         exit(1);
     }
 
-    int fifo_writer;
-    if ((fifo_writer = open("./ecoute",O_WRONLY)) == -1) {
-        printf("Le serveur doit être lance, et depuis le meme repertoire que le client\n");
+    int fifo_writer = open("ecoute",O_WRONLY);
+    if (fifo_writer == -1) {
+        perror("Le serveur doit être lance, et depuis le meme repertoire que le client");
         exit(2);
     }
 
@@ -59,14 +59,15 @@ int main (int argc, char *argv[]) {
     gen_socket(names_c2s, "c2s", id);
 
     // on envoie les identifiants de fichier au server
-    write(fifo_writer, &id, sizeof(id));
+    write(fifo_writer, &id, sizeof(int));
 
     // on ouvre les fifo
     s2c_listener = open(names_s2c, O_RDONLY);
     c2s_writer = open(names_c2s, O_WRONLY);
 
     // on envoie le pseudo sur notre "lien dédié"
-    write(c2s_writer, argv[2], strlen(argv[2])+1);
+    write(c2s_writer, argv[1], strlen(argv[1])+1);
+    printf("Démarrage du client %s...\n", argv[1]);
 
     char buf[TAILLE_MSG];
     bool cont = true;

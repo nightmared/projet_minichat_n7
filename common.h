@@ -16,8 +16,12 @@
 #define NB_LIGNES 20
 
 
-void gen_socket(char* dest, char* base, int id) {
+void gen_socket_name(char* dest, char* base, int id) {
     snprintf(dest, TAILLE_NOM, "%s_%i", base, id);
+}
+
+void gen_socket(char* dest, char* base, int id) {
+    gen_socket_name(dest, base, id);
     if (mkfifo(dest, S_IRUSR|S_IWUSR) < 0) {
         printf("Impossible de créer le pipe %s\n", dest);
         exit(3);
