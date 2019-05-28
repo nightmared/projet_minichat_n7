@@ -52,11 +52,11 @@ bool handle_input(char* input, bool from_stdin) {
         // on élimine le '\n' en fin de ligne
         input[strlen(input)-1] = '\0';
         write(c2s_writer, input, (TAILLE_MSG-TAILLE_NOM)*sizeof(char));
-		sprintf(discussion[pos], "<me>%*c", TAILLE_NOM-4, ' ');
-		strncpy(discussion[pos]+TAILLE_NOM, input, TAILLE_MSG-TAILLE_NOM);
+        sprintf(discussion[pos], "<me>%*c", TAILLE_NOM-4, ' ');
+        strncpy(discussion[pos]+TAILLE_NOM, input, TAILLE_MSG-TAILLE_NOM);
     } else {
-		strncpy(discussion[pos], input, TAILLE_MSG);
-	}
+        strncpy(discussion[pos], input, TAILLE_MSG);
+    }
     afficher();
 
     return true;
@@ -123,12 +123,16 @@ int main (int argc, char *argv[]) {
         }
 
         if (FD_ISSET(s2c_listener, &listeners)) {
-            int nb_read = read(s2c_listener, buf, (TAILLE_MSG-1)*sizeof(char));
+            int nb_read = read(s2c_listener, buf, (TAILLE_MSG)*sizeof(char));
+            if (nb_read <= 0) {
+                // le serveur a quitté
+                cont = false;
+            }
             buf[nb_read] = 0;
             cont &= handle_input(buf, false);
         }
         if (FD_ISSET(STDIN_FILENO, &listeners)) {
-            int nb_read = read(STDIN_FILENO, buf, (TAILLE_MSG-TAILLE_NOM-1)*sizeof(char));
+            int nb_read = read(STDIN_FILENO, buf, (TAILLE_MSG-TAILLE_NOM)*sizeof(char));
             buf[nb_read] = 0;
             cont &= handle_input(buf, true);
         }

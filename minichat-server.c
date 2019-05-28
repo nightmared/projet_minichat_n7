@@ -1,15 +1,15 @@
 #include "common.h"
 
-struct client { 					/* descripteur de participant */
+struct client {                     /* descripteur de participant */
     bool actif;
     char nom [TAILLE_NOM];
-    int in;		/* tube d'entrée (C2S) */
-    int out;	/* tube de sortie (S2C) */
+    int in;        /* tube d'entrée (C2S) */
+    int out;    /* tube de sortie (S2C) */
 };
 
 
 static struct client clients[MAXPARTICIPANTS];
-
+static int listener;
 static char buf[TAILLE_MSG];
 
 void reset(int i) {
@@ -28,16 +28,29 @@ void diffuser(int origin) {
             snprintf(nom+max_pseudo_len+1, TAILLE_NOM-max_pseudo_len, ">%*c", TAILLE_NOM-max_pseudo_len-3, ' ');
             nom[TAILLE_NOM-1] = ' ';
             write(clients[i].out, nom, TAILLE_NOM*sizeof(char));
-            write(clients[i].out, buf, (TAILLE_MSG-TAILLE_NOM-1)*sizeof(char));
+            write(clients[i].out, buf, (TAILLE_MSG-TAILLE_NOM)*sizeof(char));
         }
     }
+}
+
+void cleanup() {
+    printf("On m'a demandé de quitter, au revoir!\n");
+    for (int i=0; i < MAXPARTICIPANTS; i++) {
+        if (clients[i].actif) {
+            close(clients[i].in);
+            close(clients[i].out);
+        }
+    }
+    close(listener);
+    unlink("ecoute");
+    exit(1);
 }
 
 int main (int argc, char *argv[]) {
     for (int i=0; i < MAXPARTICIPANTS; i++) {
         reset(i);
     }
-		
+        
     // suppression du précédent pipe, s'il existe encore
     unlink("ecoute");
     int res = mkfifo("ecoute", S_IRUSR|S_IWUSR);
@@ -45,7 +58,7 @@ int main (int argc, char *argv[]) {
         perror("Couldn't open the pipe");
         exit(1);
     }
-    int listener = open("ecoute", O_RDONLY | O_NONBLOCK);
+    listener = open("ecoute", O_RDONLY | O_NONBLOCK);
     // descripteur de fichier nécessaire pour empécher le serveur de se fermer en l'absence de clients
     open("ecoute", O_WRONLY);
 
@@ -75,7 +88,7 @@ int main (int argc, char *argv[]) {
         
         for (int i=0; i < MAXPARTICIPANTS; i++) {
             if (clients[i].actif && FD_ISSET(clients[i].in, &polled_fds)) {
-                int nb_read = read(clients[i].in, buf, (TAILLE_MSG-TAILLE_NOM-1)*sizeof(char));
+                int nb_read = read(clients[i].in, buf, (TAILLE_MSG-TAILLE_NOM)*sizeof(char));
                 if (nb_read <= 0) {
                     // on déconnecte ce client
                     printf("L'utilisateur %s s'est déconnecté\n", clients[i].nom);
@@ -102,6 +115,8 @@ int main (int argc, char *argv[]) {
                     gen_socket_name(name, "c2s", id);
                     clients[i].in = open(name, O_RDONLY);
                     clients[i].nom[read(clients[i].in, clients[i].nom, TAILLE_NOM*sizeof(char))] = 0;
+                    if (strlen(clients[i].nom) == 3 && !strncmp(clients[i].nom, "fin", 3))
+                        cleanup();
                     printf("Nouveau client connecté: %s\n", clients[i].nom);
                     break;
                 }
