@@ -2,37 +2,70 @@
 
 #include <curses.h>
 #include <sys/time.h>
+#include <sys/ioctl.h>
+#include <signal.h>
 
-static char discussion[NB_LIGNES][TAILLE_MSG]; /* derniers messages reçus */
+static char discussion[MAXPARTICIPANTS*2][TAILLE_MSG]; /* derniers messages reçus */
 static int pos = 0;
+static bool cont = true;
 static int s2c_listener, c2s_writer;
+static int tty;
+
+int window_size() {
+    struct winsize ws;
+    if (ioctl(tty, TIOCGWINSZ, &ws) < 0) {
+        return 15;
+    }
+    return ws.ws_row;
+}
+
+// On récupères le message décale de offset par rapport à al aposition actuelle
+char* get_msg(int offset) {
+    int cur = (pos+offset)%(MAXPARTICIPANTS*2);
+    if (cur < 0)
+        cur = MAXPARTICIPANTS-1-cur;
+    return discussion[cur];
+}
 
 void afficher() { 
-    clear();
-    //refresh();
+    // On efface l'écran
+    write(1, "\033[H""\033[J", 6);
+
     printf("==============================(discussion)==============================\n");
-    for (int i=0; i<NB_LIGNES; i++) {
-        printf("%s\n", discussion[(pos+i)%NB_LIGNES]);
+    for (int i=MIN(window_size()-3, MAXPARTICIPANTS*2)-1; i>=0; i--) {
+        printf("%s\n", get_msg(-i));
     }
     printf("------------------------------------------------------------------------\n");
+}
+
+void handle_sigint(int sig) {
+    cont = false;
 }
 
 bool handle_input(char* input, bool from_stdin) {
     if (strcmp(input, "fin\n") == 0)
         return false;
 
-    pos = (pos+1)%NB_LIGNES;
-    strncpy(discussion[pos], input, TAILLE_MSG);
-    afficher();
+    pos = (pos+1)%(MAXPARTICIPANTS*2);
 
     if (from_stdin) {
-        write(c2s_writer, input, TAILLE_MSG*sizeof(char));
-    }
+        // on élimine le '\n' en fin de ligne
+        input[strlen(input)-1] = '\0';
+        write(c2s_writer, input, (TAILLE_MSG-TAILLE_NOM)*sizeof(char));
+		sprintf(discussion[pos], "<me>%*c", TAILLE_NOM-4, ' ');
+		strncpy(discussion[pos]+TAILLE_NOM, input, TAILLE_MSG-TAILLE_NOM);
+    } else {
+		strncpy(discussion[pos], input, TAILLE_MSG);
+	}
+    afficher();
 
     return true;
 }
 
 int main (int argc, char *argv[]) {
+    tty = open("/dev/tty", O_RDWR);
+    signal(SIGINT, handle_sigint);
+
     // seed the random generator so that no two seed will be equal (between clients)
     struct timeval tv;
     gettimeofday(&tv, NULL);
@@ -67,10 +100,12 @@ int main (int argc, char *argv[]) {
 
     // on envoie le pseudo sur notre "lien dédié"
     write(c2s_writer, argv[1], strlen(argv[1])+1);
-    printf("Démarrage du client %s...\n", argv[1]);
+
+    // on initialise toute la discussion à zéro
+    memset(discussion, '\0', MAXPARTICIPANTS*2*TAILLE_MSG);
+    afficher();
 
     char buf[TAILLE_MSG];
-    bool cont = true;
     do {
         fd_set listeners;
         FD_ZERO(&listeners);
@@ -78,7 +113,7 @@ int main (int argc, char *argv[]) {
         FD_SET(s2c_listener, &listeners);
 
         // attente d'entrées utilisateur
-        int modif = select(2, &listeners, NULL, NULL, NULL);
+        int modif = select(MAX(STDIN_FILENO, s2c_listener)+1, &listeners, NULL, NULL, NULL);
         if (modif == -1) {
             // prise en charge des signaux
             if (errno == EINTR)
@@ -92,8 +127,8 @@ int main (int argc, char *argv[]) {
             buf[nb_read] = 0;
             cont &= handle_input(buf, false);
         }
-        if (FD_ISSET(s2c_listener, &listeners)) {
-            int nb_read = read(STDIN_FILENO, buf, (TAILLE_MSG-1)*sizeof(char));
+        if (FD_ISSET(STDIN_FILENO, &listeners)) {
+            int nb_read = read(STDIN_FILENO, buf, (TAILLE_MSG-TAILLE_NOM-1)*sizeof(char));
             buf[nb_read] = 0;
             cont &= handle_input(buf, true);
         }

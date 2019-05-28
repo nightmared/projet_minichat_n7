@@ -1,6 +1,5 @@
 OBJECTS = $(FILES:.c=.o)
 CFLAGS = -std=c11 -g -Wall -pedantic
-LDFLAGS = -lcurses
 
 all: minichat-client minichat-server
 

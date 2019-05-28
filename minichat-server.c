@@ -12,7 +12,7 @@ static struct client clients[MAXPARTICIPANTS];
 
 static char buf[TAILLE_MSG];
 
-void effacer(int i) { /* efface le descripteur pour le participant i */
+void reset(int i) {
     clients[i].actif = false;
     memset(clients[i].nom, 0, TAILLE_NOM*sizeof(char));
     clients[i].in = -1;
@@ -22,14 +22,20 @@ void effacer(int i) { /* efface le descripteur pour le participant i */
 void diffuser(int origin) {
     for (int i=0; i < MAXPARTICIPANTS; i++) {
         if (clients[i].actif && i != origin) {
-            write(clients[i].out, buf, (TAILLE_MSG-1)*sizeof(char));
+            char nom[TAILLE_NOM];
+            int max_pseudo_len = MIN(strlen(clients[i].nom), TAILLE_NOM-4);
+            snprintf(nom, max_pseudo_len+2, "<%s", clients[i].nom);
+            snprintf(nom+max_pseudo_len+1, TAILLE_NOM-max_pseudo_len, ">%*c", TAILLE_NOM-max_pseudo_len-3, ' ');
+            nom[TAILLE_NOM-1] = ' ';
+            write(clients[i].out, nom, TAILLE_NOM*sizeof(char));
+            write(clients[i].out, buf, (TAILLE_MSG-TAILLE_NOM-1)*sizeof(char));
         }
     }
 }
 
 int main (int argc, char *argv[]) {
     for (int i=0; i < MAXPARTICIPANTS; i++) {
-        effacer(i);
+        reset(i);
     }
 		
     // suppression du précédent pipe, s'il existe encore
@@ -69,11 +75,13 @@ int main (int argc, char *argv[]) {
         
         for (int i=0; i < MAXPARTICIPANTS; i++) {
             if (clients[i].actif && FD_ISSET(clients[i].in, &polled_fds)) {
-                int nb_read = read(clients[i].in, buf, (TAILLE_MSG-1)*sizeof(char));
+                int nb_read = read(clients[i].in, buf, (TAILLE_MSG-TAILLE_NOM-1)*sizeof(char));
                 if (nb_read <= 0) {
                     // on déconnecte ce client
                     printf("L'utilisateur %s s'est déconnecté\n", clients[i].nom);
-                    effacer(i);
+                    close(clients[i].in);
+                    close(clients[i].out);
+                    reset(i);
                     continue;
                 }
                 buf[nb_read] = 0;
@@ -88,12 +96,11 @@ int main (int argc, char *argv[]) {
                     clients[i].actif = true;
                     int id;
                     read(listener, &id, sizeof(int));
-                    char names_s2c[TAILLE_NOM];
-                    char names_c2s[TAILLE_NOM];
-                    gen_socket_name(names_s2c, "s2c", id);
-                    gen_socket_name(names_c2s, "c2s", id);
-                    clients[i].out = open(names_s2c, O_WRONLY);
-                    clients[i].in = open(names_c2s, O_RDONLY);
+                    char name[TAILLE_NOM];
+                    gen_socket_name(name, "s2c", id);
+                    clients[i].out = open(name, O_WRONLY);
+                    gen_socket_name(name, "c2s", id);
+                    clients[i].in = open(name, O_RDONLY);
                     clients[i].nom[read(clients[i].in, clients[i].nom, TAILLE_NOM*sizeof(char))] = 0;
                     printf("Nouveau client connecté: %s\n", clients[i].nom);
                     break;

@@ -12,8 +12,9 @@
 
 #define MAXPARTICIPANTS 5
 #define TAILLE_MSG 128
-#define TAILLE_NOM 25
-#define NB_LIGNES 20
+#define TAILLE_NOM 20
+#define MIN(a, b) ((a<b) ? a : b)
+#define MAX(a, b) ((a>b) ? a : b)
 
 
 void gen_socket_name(char* dest, char* base, int id) {
