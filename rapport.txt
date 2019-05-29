@@ -1,0 +1,15 @@
+#############################
+# Rapport sur le minichat : #
+#############################
+
+Spécificités de conception: 
+    - Nous avons choisi d'utiliser select pluto que de poller les entrées afin d'être plus léger en CPU dans la version 1.
+    - Les deux approches utilisent une ioctl pour accéder à la taille courante du terminal, ou utilisent une taille par défaut de 15 lignes dans le cas où cette ioctl retrourne un message d'erreur.
+    - Chaque message dans la version 1 est composé de TAILLE_NOM charactères pour le pseudo (qui ne contient PAS de \0) et de TAILLE_MSG-NOM charactères pour le contenu utile du message.
+    - Chaque message dans la version 2 est contenu dans la struct message, qui est donc de taille TAILLE_NOM+TAILLE8MSG+sizeof(int). Cette fois-ci, le pseudo est terminé par un \0.
+
+Méthodologie de test:
+    Les tests ont été intégralement effectués manuellement, et s'assurent que la connection, la déconnection et terminaison fonctionne correctement.
+
+Comparaison entre les deux versions:
+    - La V1 a l'avantage de ne pas consommer de CPU en cas d'inactivité, puisque elle reste en attente sur le select. Ce n'est pas le cas de la version 2. De plus, cette derière n'est pas réactive: dans le pire des cas on peut attendre jusqu'à une seconde pour afficher un message. Une approche avec un timer et un select qui attend sur ce timer et l'entrée standard permettrait d'éliminer une partie du problème (la non réactivité en cas d'entrée utilisateur), mais une partie seulement. En effet, un message disponible sur les pages artagées peut rester en attente, faute de moyen de notifier que cette nouvelle valeur est disponible.
