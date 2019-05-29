@@ -1,6 +1,5 @@
 #include "common.h"
 
-#include <curses.h>
 #include <sys/time.h>
 #include <sys/ioctl.h>
 #include <signal.h>

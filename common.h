@@ -11,6 +11,7 @@
 #include <stdbool.h>
 
 #define MAXPARTICIPANTS 5
+#define NB_LIGNES 20
 #define TAILLE_MSG 128
 #define TAILLE_NOM 20
 #define MIN(a, b) ((a<b) ? a : b)
