@@ -48,13 +48,13 @@ void afficher() {
     printf("------------------------------------------------------------------------\n");
 }
 
-bool handle_input(char *input) {
+bool handle_input(char *input, int size) {
     pos = pos+1;
     struct message *new_message = get_msg(0);
 
 	if (input != NULL) {
         // on élimine le '\n' en fin de ligne
-        input[strlen(input)-1] = '\0';
+        input[size-1] = '\0';
 		// fin du client ?
 		if (strlen(input) == 3 && strcmp(input, "fin") == 0)
 			return false;
@@ -84,22 +84,31 @@ int main (int argc, char *argv[]) {
     fcntl(STDIN_FILENO, F_SETFL, fcntl(STDIN_FILENO, F_GETFL)|O_NONBLOCK);
 
 	// il est temps de mmaper notre fichier
-	int fd = open("fd_echange_v2", O_CREAT|O_TRUNC|O_RDWR, 0644);
+	int fd = open("fd_echange_v2", O_CREAT|O_RDWR, 0644);
     // on alloue une page par excédent
 	int nb_pages = ((NB_LIGNES*sizeof(struct message))/sysconf(_SC_PAGE_SIZE)+1)*sysconf(_SC_PAGE_SIZE);
 	// on préalloue la place dans le fichier
 	ftruncate(fd, nb_pages);
 	discussion = mmap(NULL, nb_pages, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 
-    afficher();
+    for (int i = 0; i < NB_LIGNES; i++) {
+        struct message *msg = get_msg(i);
+        if (msg->numero > pos)
+            pos = msg->numero;
+    }
+    printf("pos=%i\n", pos);
 
+    afficher();
     char buf[TAILLE_MSG];
     do {
+        memset(buf, 0, TAILLE_MSG);
         int nb_read = read(STDIN_FILENO, buf, (TAILLE_MSG)*sizeof(char));
-        if (nb_read > 0)
-			cont &= handle_input(buf);
+        if (nb_read > 0) {
+			cont &= handle_input(buf, nb_read);
+            continue;
+        }
 		if (get_msg(1)->numero > get_msg(0)->numero)
-			handle_input(NULL);
+			handle_input(NULL, 0);
 		sleep(1);
     } while (cont);
 
